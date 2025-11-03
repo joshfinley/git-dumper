@@ -31,7 +31,7 @@ def printf(fmt, *args, file=sys.stdout):
 
 
 def is_html(response):
-    """ Return True if the response is a HTML webpage """
+    """Return True if the response is a HTML webpage"""
     return (
         "Content-Type" in response.headers
         and "text/html" in response.headers["Content-Type"]
@@ -39,33 +39,26 @@ def is_html(response):
 
 
 def is_safe_path(path):
-    """ Prevent directory traversal attacks """
+    """Prevent directory traversal attacks"""
     if path.startswith("/"):
         return False
 
     safe_path = os.path.expanduser("~")
     return (
-        os.path.commonpath(
-            (os.path.realpath(os.path.join(safe_path, path)), safe_path)
-        )
+        os.path.commonpath((os.path.realpath(os.path.join(safe_path, path)), safe_path))
         == safe_path
     )
 
 
 def get_indexed_files(response):
-    """ Return all the files in the directory index webpage """
+    """Return all the files in the directory index webpage"""
     html = bs4.BeautifulSoup(response.text, "html.parser")
     files = []
 
     for link in html.find_all("a"):
         url = urllib.parse.urlparse(link.get("href"))
 
-        if (
-            url.path
-            and is_safe_path(url.path)
-            and not url.scheme
-            and not url.netloc
-        ):
+        if url.path and is_safe_path(url.path) and not url.scheme and not url.netloc:
             files.append(url.path)
 
     return files
@@ -80,8 +73,7 @@ def verify_response(response):
             ),
         )
     elif (
-        "Content-Length" in response.headers
-        and response.headers["Content-Length"] == 0
+        "Content-Length" in response.headers and response.headers["Content-Length"] == 0
     ):
         return False, "[-] %s/%s responded with a zero-length body\n"
     elif (
@@ -94,7 +86,7 @@ def verify_response(response):
 
 
 def create_intermediate_dirs(path):
-    """ Create intermediate directories, if necessary """
+    """Create intermediate directories, if necessary"""
 
     dirname, basename = os.path.split(path)
 
@@ -106,7 +98,7 @@ def create_intermediate_dirs(path):
 
 
 def get_referenced_sha1(obj_file):
-    """ Return all the referenced SHA1 in the given object file """
+    """Return all the referenced SHA1 in the given object file"""
     objs = []
 
     if isinstance(obj_file, dulwich.objects.Commit):
@@ -122,16 +114,14 @@ def get_referenced_sha1(obj_file):
     elif isinstance(obj_file, dulwich.objects.Tag):
         pass
     else:
-        printf(
-            "error: unexpected object type: %r\n" % obj_file, file=sys.stderr
-        )
+        printf("error: unexpected object type: %r\n" % obj_file, file=sys.stderr)
         sys.exit(1)
 
     return objs
 
 
 class Worker(multiprocessing.Process):
-    """ Worker for process_tasks """
+    """Worker for process_tasks"""
 
     def __init__(self, pending_tasks, tasks_done, args):
         super().__init__()
@@ -158,9 +148,7 @@ class Worker(multiprocessing.Process):
                 traceback.print_exc()
                 result = []
 
-            assert isinstance(
-                result, list
-            ), "do_task() should return a list of tasks"
+            assert isinstance(result, list), "do_task() should return a list of tasks"
 
             self.tasks_done.put(result)
 
@@ -172,7 +160,7 @@ class Worker(multiprocessing.Process):
 
 
 def process_tasks(initial_tasks, worker, jobs, args=(), tasks_done=None):
-    """ Process tasks in parallel """
+    """Process tasks in parallel"""
 
     if not initial_tasks:
         return
@@ -221,18 +209,43 @@ def process_tasks(initial_tasks, worker, jobs, args=(), tasks_done=None):
 
 
 class DownloadWorker(Worker):
-    """ Download a list of files """
+    """Download a list of files"""
 
-    def init(self, url, directory, retry, timeout, http_headers, client_cert_p12=None, client_cert_p12_password=None):
+    def init(
+        self,
+        url,
+        directory,
+        retry,
+        timeout,
+        http_headers,
+        client_cert_p12=None,
+        client_cert_p12_password=None,
+    ):
         self.session = requests.Session()
         self.session.verify = False
         self.session.headers = http_headers
         if client_cert_p12:
-            self.session.mount(url, Pkcs12Adapter(pkcs12_filename=client_cert_p12, pkcs12_password=client_cert_p12_password))
+            self.session.mount(
+                url,
+                Pkcs12Adapter(
+                    pkcs12_filename=client_cert_p12,
+                    pkcs12_password=client_cert_p12_password,
+                ),
+            )
         else:
             self.session.mount(url, requests.adapters.HTTPAdapter(max_retries=retry))
 
-    def do_task(self, filepath, url, directory, retry, timeout, http_headers, client_cert_p12=None, client_cert_p12_password=None):
+    def do_task(
+        self,
+        filepath,
+        url,
+        directory,
+        retry,
+        timeout,
+        http_headers,
+        client_cert_p12=None,
+        client_cert_p12_password=None,
+    ):
         if os.path.isfile(os.path.join(directory, filepath)):
             printf("[-] Already downloaded %s/%s\n", url, filepath)
             return []
@@ -269,7 +282,7 @@ class DownloadWorker(Worker):
 
 
 class RecursiveDownloadWorker(DownloadWorker):
-    """ Download a directory recursively """
+    """Download a directory recursively"""
 
     def do_task(self, filepath, url, directory, retry, timeout, http_headers):
         if os.path.isfile(os.path.join(directory, filepath)):
@@ -301,10 +314,7 @@ class RecursiveDownloadWorker(DownloadWorker):
             if filepath.endswith("/"):  # directory index
                 assert is_html(response)
 
-                return [
-                    filepath + filename
-                    for filename in get_indexed_files(response)
-                ]
+                return [filepath + filename for filename in get_indexed_files(response)]
             else:  # file
                 valid, error_message = verify_response(response)
                 if not valid:
@@ -323,15 +333,23 @@ class RecursiveDownloadWorker(DownloadWorker):
 
 
 class FindRefsWorker(DownloadWorker):
-    """ Find refs/ """
+    """Find refs/"""
 
-    def do_task(self, filepath, url, directory, retry, timeout, http_headers, client_cert_p12=None, client_cert_p12_password=None):
+    def do_task(
+        self,
+        filepath,
+        url,
+        directory,
+        retry,
+        timeout,
+        http_headers,
+        client_cert_p12=None,
+        client_cert_p12_password=None,
+    ):
         response = self.session.get(
             "%s/%s" % (url, filepath), allow_redirects=False, timeout=timeout
         )
-        printf(
-            "[-] Fetching %s/%s [%d]\n", url, filepath, response.status_code
-        )
+        printf("[-] Fetching %s/%s [%d]\n", url, filepath, response.status_code)
 
         valid, error_message = verify_response(response)
         if not valid:
@@ -348,9 +366,7 @@ class FindRefsWorker(DownloadWorker):
         # find refs
         tasks = []
 
-        for ref in re.findall(
-            r"(refs(/[a-zA-Z0-9\-\.\_\*]+)+)", response.text
-        ):
+        for ref in re.findall(r"(refs(/[a-zA-Z0-9\-\.\_\*]+)+)", response.text):
             ref = ref[0]
             if not ref.endswith("*") and is_safe_path(ref):
                 tasks.append(".git/%s" % ref)
@@ -360,9 +376,19 @@ class FindRefsWorker(DownloadWorker):
 
 
 class FindObjectsWorker(DownloadWorker):
-    """ Find objects """
+    """Find objects"""
 
-    def do_task(self, obj, url, directory, retry, timeout, http_headers, client_cert_p12=None, client_cert_p12_password=None):
+    def do_task(
+        self,
+        obj,
+        url,
+        directory,
+        retry,
+        timeout,
+        http_headers,
+        client_cert_p12=None,
+        client_cert_p12_password=None,
+    ):
         filepath = ".git/objects/%s/%s" % (obj[:2], obj[2:])
 
         if os.path.isfile(os.path.join(directory, filepath)):
@@ -398,23 +424,38 @@ class FindObjectsWorker(DownloadWorker):
         return get_referenced_sha1(obj_file)
 
 
-def sanitize_file(filepath):
-    """ Inplace comment out possibly unsafe lines based on regex """
+def sanitize_file(filepath, aggressive: bool | None = True):
+    """Inplace comment out possibly unsafe lines based on regex or just comment out entire file"""
     assert os.path.isfile(filepath), "%s is not a file" % filepath
 
-    UNSAFE=r"^\s*fsmonitor|sshcommand|askpass|editor|pager"
+    if aggressive is not None and not aggressive:
+        UNSAFE = r"^\s*fsmonitor|sshcommand|askpass|editor|pager"
+        with open(filepath, "r+") as f:
+            content = f.read()
+            modified_content = re.sub(UNSAFE, r"# \g<0>", content, flags=re.IGNORECASE)
+            if content != modified_content:
+                printf("Warning: '%s' file was altered\n" % filepath)
+                f.seek(0)
+                f.write(modified_content)
+    elif aggressive is not None and aggressive:
+        with open(filepath, "r") as f:
+            lines = f.readlines()
+            modified_lines = ["# " + line for line in lines]
+        with open(filepath, "w") as f:
+            f.writelines(modified_lines)
 
-    with open(filepath, 'r+') as f:
-        content = f.read()
-        modified_content = re.sub(UNSAFE, r'# \g<0>', content, flags=re.IGNORECASE)
-        if content != modified_content:
-            printf("Warning: '%s' file was altered\n" % filepath)
-            f.seek(0)
-            f.write(modified_content)
 
-
-def fetch_git(url, directory, jobs, retry, timeout, http_headers, client_cert_p12=None, client_cert_p12_password=None):
-    """ Dump a git repository into the output directory """
+def fetch_git(
+    url,
+    directory,
+    jobs,
+    retry,
+    timeout,
+    http_headers,
+    client_cert_p12=None,
+    client_cert_p12_password=None,
+):
+    """Dump a git repository into the output directory"""
 
     assert os.path.isdir(directory), "%s is not a directory" % directory
     assert jobs >= 1, "invalid number of jobs"
@@ -425,7 +466,13 @@ def fetch_git(url, directory, jobs, retry, timeout, http_headers, client_cert_p1
     session.verify = False
     session.headers = http_headers
     if client_cert_p12:
-        session.mount(url, Pkcs12Adapter(pkcs12_filename=client_cert_p12, pkcs12_password=client_cert_p12_password))
+        session.mount(
+            url,
+            Pkcs12Adapter(
+                pkcs12_filename=client_cert_p12,
+                pkcs12_password=client_cert_p12_password,
+            ),
+        )
     else:
         session.mount(url, requests.adapters.HTTPAdapter(max_retries=retry))
     if os.listdir(directory):
@@ -442,11 +489,7 @@ def fetch_git(url, directory, jobs, retry, timeout, http_headers, client_cert_p1
 
     # check for /.git/HEAD
     printf("[-] Testing %s/.git/HEAD ", url)
-    response = session.get(
-        "%s/.git/HEAD" % url, 
-        timeout=timeout, 
-        allow_redirects=False
-    )
+    response = session.get("%s/.git/HEAD" % url, timeout=timeout, allow_redirects=False)
     printf("[%d]\n", response.status_code)
 
     valid, error_message = verify_response(response)
@@ -466,13 +509,14 @@ def fetch_git(url, directory, jobs, retry, timeout, http_headers, client_cert_p1
     configured_proxy = socks.getdefaultproxy()
     if configured_proxy is not None:
         proxy_types = ["http", "socks4h", "socks5h"]
-        environment["ALL_PROXY"] = f"http.proxy={proxy_types[configured_proxy[0]]}://{configured_proxy[1]}:{configured_proxy[2]}"
+        environment["ALL_PROXY"] = (
+            f"http.proxy={proxy_types[configured_proxy[0]]}://{configured_proxy[1]}:{configured_proxy[2]}"
+        )
 
     # check for directory listing
     printf("[-] Testing %s/.git/ ", url)
     response = session.get("%s/.git/" % url, allow_redirects=False)
     printf("[%d]\n", response.status_code)
-
 
     if (
         response.status_code == 200
@@ -486,11 +530,11 @@ def fetch_git(url, directory, jobs, retry, timeout, http_headers, client_cert_p1
             jobs,
             args=(url, directory, retry, timeout, http_headers),
         )
-        
+
         os.chdir(directory)
 
         printf("[-] Sanitizing .git/config\n")
-        sanitize_file(".git/config")
+        sanitize_file(".git/config", aggressive=True)
 
         printf("[-] Running git checkout .\n")
         subprocess.check_call(["git", "checkout", "."], env=environment)
@@ -522,7 +566,15 @@ def fetch_git(url, directory, jobs, retry, timeout, http_headers, client_cert_p1
         tasks,
         DownloadWorker,
         jobs,
-        args=(url, directory, retry, timeout, http_headers, client_cert_p12, client_cert_p12_password),
+        args=(
+            url,
+            directory,
+            retry,
+            timeout,
+            http_headers,
+            client_cert_p12,
+            client_cert_p12_password,
+        ),
     )
 
     # find refs
@@ -568,14 +620,22 @@ def fetch_git(url, directory, jobs, retry, timeout, http_headers, client_cert_p1
         ".git/refs/wip/index/refs/heads/master",
         ".git/refs/wip/index/refs/heads/staging",
         ".git/refs/wip/index/refs/heads/production",
-        ".git/refs/wip/index/refs/heads/development"
+        ".git/refs/wip/index/refs/heads/development",
     ]
 
     process_tasks(
         tasks,
         FindRefsWorker,
         jobs,
-        args=(url, directory, retry, timeout, http_headers, client_cert_p12, client_cert_p12_password),
+        args=(
+            url,
+            directory,
+            retry,
+            timeout,
+            http_headers,
+            client_cert_p12,
+            client_cert_p12_password,
+        ),
     )
 
     # find packs
@@ -583,9 +643,7 @@ def fetch_git(url, directory, jobs, retry, timeout, http_headers, client_cert_p1
     tasks = []
 
     # use .git/objects/info/packs to find packs
-    info_packs_path = os.path.join(
-        directory, ".git", "objects", "info", "packs"
-    )
+    info_packs_path = os.path.join(directory, ".git", "objects", "info", "packs")
     if os.path.exists(info_packs_path):
         with open(info_packs_path, "r") as f:
             info_packs = f.read()
@@ -598,7 +656,15 @@ def fetch_git(url, directory, jobs, retry, timeout, http_headers, client_cert_p1
         tasks,
         DownloadWorker,
         jobs,
-        args=(url, directory, retry, timeout, http_headers, client_cert_p12, client_cert_p12_password),
+        args=(
+            url,
+            directory,
+            retry,
+            timeout,
+            http_headers,
+            client_cert_p12,
+            client_cert_p12_password,
+        ),
     )
 
     # find objects
@@ -613,14 +679,10 @@ def fetch_git(url, directory, jobs, retry, timeout, http_headers, client_cert_p1
         os.path.join(directory, ".git", "FETCH_HEAD"),
         os.path.join(directory, ".git", "ORIG_HEAD"),
     ]
-    for dirpath, _, filenames in os.walk(
-        os.path.join(directory, ".git", "refs")
-    ):
+    for dirpath, _, filenames in os.walk(os.path.join(directory, ".git", "refs")):
         for filename in filenames:
             files.append(os.path.join(dirpath, filename))
-    for dirpath, _, filenames in os.walk(
-        os.path.join(directory, ".git", "logs")
-    ):
+    for dirpath, _, filenames in os.walk(os.path.join(directory, ".git", "logs")):
         for filename in filenames:
             files.append(os.path.join(dirpath, filename))
 
@@ -649,9 +711,7 @@ def fetch_git(url, directory, jobs, retry, timeout, http_headers, client_cert_p1
         for filename in os.listdir(pack_file_dir):
             if filename.startswith("pack-") and filename.endswith(".pack"):
                 pack_data_path = os.path.join(pack_file_dir, filename)
-                pack_idx_path = os.path.join(
-                    pack_file_dir, filename[:-5] + ".idx"
-                )
+                pack_idx_path = os.path.join(pack_file_dir, filename[:-5] + ".idx")
                 pack_data = dulwich.pack.PackData(pack_data_path)
                 pack_idx = dulwich.pack.load_pack_index(pack_idx_path)
                 pack = dulwich.pack.Pack.from_objects(pack_data, pack_idx)
@@ -666,20 +726,26 @@ def fetch_git(url, directory, jobs, retry, timeout, http_headers, client_cert_p1
         objs,
         FindObjectsWorker,
         jobs,
-        args=(url, directory, retry, timeout, http_headers, client_cert_p12, client_cert_p12_password),
+        args=(
+            url,
+            directory,
+            retry,
+            timeout,
+            http_headers,
+            client_cert_p12,
+            client_cert_p12_password,
+        ),
         tasks_done=packed_objs,
     )
 
     # git checkout
     printf("[-] Running git checkout .\n")
     os.chdir(directory)
-    sanitize_file(".git/config")
+    sanitize_file(".git/config", aggressive=True)
 
     # ignore errors
     subprocess.call(
-        ["git", "checkout", "."], 
-        stderr=open(os.devnull, "wb"),
-        env=environment
+        ["git", "checkout", "."], stderr=open(os.devnull, "wb"), env=environment
     )
 
     return 0
@@ -694,7 +760,9 @@ def main():
     parser.add_argument("directory", metavar="DIR", help="output directory")
     parser.add_argument("--proxy", help="use the specified proxy")
     parser.add_argument("--client-cert-p12", help="client certificate in PKCS#12")
-    parser.add_argument("--client-cert-p12-password", help="password for the client certificate")
+    parser.add_argument(
+        "--client-cert-p12-password", help="password for the client certificate"
+    )
     parser.add_argument(
         "-j",
         "--jobs",
@@ -751,8 +819,7 @@ def main():
             tokens = header.split("=", maxsplit=1)
             if len(tokens) != 2:
                 parser.error(
-                    "http header must have the form NAME=VALUE, got `%s`"
-                    % header
+                    "http header must have the form NAME=VALUE, got `%s`" % header
                 )
             name, value = tokens
             http_headers[name.strip()] = value.strip()
@@ -792,9 +859,7 @@ def main():
             )
 
         if not os.path.isfile(args.client_cert_p12):
-            parser.error(
-                "client certificate `%s` is not a file" % args.client_cert_p12
-            )
+            parser.error("client certificate `%s` is not a file" % args.client_cert_p12)
 
         if args.client_cert_p12_password is None:
             parser.error("client certificate password is required")
@@ -811,7 +876,7 @@ def main():
             args.timeout,
             http_headers,
             args.client_cert_p12,
-            args.client_cert_p12_password
+            args.client_cert_p12_password,
         )
     )
 
